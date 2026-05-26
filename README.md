@@ -1,79 +1,106 @@
-import numpy as np
-from PIL import Image
-import argparse
-import os
+# Reliability-Aware Complementary Cue Mining Network
 
-parser = argparse.ArgumentParser(description='Preprocess SYSU-MM01 for RACMNet')
-parser.add_argument('--data_path', default='../datasets/SYSU-MM01/',
-                    help='SYSU-MM01 root directory')
-args = parser.parse_args()
-data_path = os.path.join(args.data_path, '')
+PyTorch code for the paper **"Reliability-Aware Complementary Cue Mining for Visible-Infrared Person Re-Identification"**.
 
-rgb_cameras = ['cam1','cam2','cam4','cam5']
-ir_cameras = ['cam3','cam6']
+This repository implements RACMNet, a reliability-aware complementary cue mining framework for visible-infrared person re-identification. The main components are:
 
-              
-file_path_train = os.path.join(data_path,'exp/train_id.txt')
-file_path_val   = os.path.join(data_path,'exp/val_id.txt')
-with open(file_path_train, 'r') as file:
-    ids = file.read().splitlines()
-    ids = [int(y) for y in ids[0].split(',')]
-    id_train = ["%04d" % x for x in ids]
-    
-with open(file_path_val, 'r') as file:
-    ids = file.read().splitlines()
-    ids = [int(y) for y in ids[0].split(',')]
-    id_val = ["%04d" % x for x in ids]
-    
-                                
-id_train.extend(id_val) 
+- Reliability-Routed Cue Mining Module (RRCM)
+- Prototype-Guided Contextual Mining Module (PGCM)
+- Reliability Compactness Constraint (RCC)
+- Cross-Modality Center-Consistent Training objective (CMCT)
 
-files_rgb = []
-files_ir = []
-for id in sorted(id_train):
-    for cam in rgb_cameras:
-        img_dir = os.path.join(data_path,cam,id)
-        if os.path.isdir(img_dir):
-            new_files = sorted([img_dir+'/'+i for i in os.listdir(img_dir)])
-            files_rgb.extend(new_files)
-            
-    for cam in ir_cameras:
-        img_dir = os.path.join(data_path,cam,id)
-        if os.path.isdir(img_dir):
-            new_files = sorted([img_dir+'/'+i for i in os.listdir(img_dir)])
-            files_ir.extend(new_files)
+### 1. Results
 
-         
-pid_container = set()
-for img_path in files_ir:
-    pid = int(img_path[-13:-9])
-    pid_container.add(pid)
-pid2label = {pid:label for label, pid in enumerate(pid_container)}
-fix_image_width = 144
-fix_image_height = 288
-def read_imgs(train_image):
-    train_img = []
-    train_label = []
-    for img_path in train_image:
-             
-        img = Image.open(img_path)
-        img = img.resize((fix_image_width, fix_image_height), Image.Resampling.LANCZOS)
-        pix_array = np.array(img)
+We adopt the CNN-based AGW as the backbone.
 
-        train_img.append(pix_array) 
-        
-               
-        pid = int(img_path[-13:-9])
-        pid = pid2label[pid]
-        train_label.append(pid)
-    return np.array(train_img), np.array(train_label)
-       
-           
-train_img, train_label = read_imgs(files_rgb)
-np.save(data_path + 'train_rgb_resized_img.npy', train_img)
-np.save(data_path + 'train_rgb_resized_label.npy', train_label)
+| Datasets | Setting | Backbone | Rank@1 | Rank@10 | Rank@20 | mAP | mINP | Model |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| SYSU-MM01 | All-search | AGW | 77.15% | 97.45% | 99.36% | 72.46% | - | - |
+| SYSU-MM01 | Indoor-search | AGW | 82.69% | 98.93% | 99.71% | 85.29% | - | - |
+| RegDB | Visible-to-Infrared | AGW | 88.6% | - | - | 84.5% | - | - |
+| RegDB | Infrared-to-Visible | AGW | 87.7% | - | - | 84.7% | - | - |
+| LLCM | Visible-to-Infrared | AGW | 62.5% | - | - | 65.5% | - | - |
+| LLCM | Infrared-to-Visible | AGW | 56.7% | - | - | 63.6% | - | - |
 
-          
-train_img, train_label = read_imgs(files_ir)
-np.save(data_path + 'train_ir_resized_img.npy', train_img)
-np.save(data_path + 'train_ir_resized_label.npy', train_label)
+**The results may exhibit fluctuations due to random splitting and training settings.**
+
+### 2. Datasets
+
+- RegDB [1]: The RegDB dataset can be downloaded from this [website](http://dm.dongguk.edu/link.html).
+
+- SYSU-MM01 [2]: The SYSU-MM01 dataset can be downloaded from this [website](http://isee.sysu.edu.cn/project/RGBIRReID.htm).
+
+  Run the preprocessing script before training on SYSU-MM01. The processed training data will be stored in `.npy` format.
+
+  ```bash
+  python pre_process_sysu.py --data_path /path/to/SYSU-MM01
+  ```
+
+- LLCM [5]: The LLCM dataset can be downloaded by sending a signed [dataset release agreement](https://github.com/ZYK100/LLCM/blob/main/Agreement/LLCM%20DATASET%20RELEASE%20AGREEMENT.pdf) copy to zhangyk@stu.xmu.edu.cn.
+
+The current released training and testing scripts support SYSU-MM01 and RegDB. You can specify the dataset root with `--data_path`.
+
+### 3. Training
+
+Train RACMNet on SYSU-MM01 by:
+
+```bash
+python train.py --dataset sysu --data_path /path/to/SYSU-MM01 --gpu 0
+```
+
+Train RACMNet on RegDB by:
+
+```bash
+python train.py --dataset regdb --data_path /path/to/RegDB --trial 1 --gpu 0
+```
+
+- `--dataset`: which dataset to use, `sysu` or `regdb`.
+- `--data_path`: dataset root path.
+- `--gpu`: which GPU to use.
+- `--trial`: testing/training split for RegDB.
+
+Checkpoints are saved to `checkpoints/`, and logs are saved to `logs/` by default.
+
+### 4. Testing
+
+Test a model on SYSU-MM01 by:
+
+```bash
+python test.py --dataset sysu --data_path /path/to/SYSU-MM01 --mode all --resume model_path --gpu 0
+```
+
+- `--mode`: `all` or `indoor`, only for SYSU-MM01.
+
+Test a model on RegDB by:
+
+```bash
+python test.py --dataset regdb --data_path /path/to/RegDB --resume model_path --tvsearch --gpu 0
+```
+
+- `--tvsearch`: whether to evaluate thermal-to-visible search on RegDB.
+
+### 5. Complexity
+
+Compute model complexity by:
+
+```bash
+python compute_complexity.py --mode all --device cuda
+```
+
+This reports the baseline, `+RRCM`, `+RRCM+PGCM`, and full `RACMNet` costs.
+
+
+### 6. References
+
+[1] D. T. Nguyen, H. G. Hong, K. W. Kim, and K. R. Park. Person recognition system based on a combination of body images from visible light and thermal cameras. Sensors, 17(3):605, 2017.
+
+[2] A. Wu, W.-S. Zheng, H.-X. Yu, S. Gong, and J. Lai. RGB-infrared cross-modality person re-identification. In IEEE International Conference on Computer Vision, pages 5380-5389, 2017.
+
+[3] M. Ye, J. Shen, G. Lin, T. Xiang, L. Shao, and S. C. H. Hoi. Deep learning for person re-identification: A survey and outlook. IEEE Transactions on Pattern Analysis and Machine Intelligence, 44(6):2872-2893, 2022.
+
+[4] M. Ye, W. Ruan, B. Du, and M. Z. Shou. Channel augmented joint learning for visible-infrared recognition. In IEEE/CVF International Conference on Computer Vision, pages 13567-13576, 2021.
+
+[5] Y. Zhang and H. Wang. Diverse Embedding Expansion Network and Low-Light Cross-Modality Benchmark for Visible-Infrared Person Re-identification. In IEEE/CVF Conference on Computer Vision and Pattern Recognition, pages 2153-2162, 2023.
+
+
+The weighted path is at https://drive.google.com/file/d/1SEi66VESW8J1yplcNCLqlOM_nDw0vbx4/view?usp=drive_link
